@@ -40,9 +40,13 @@ def normalize_date(date_str: str) -> str:
 
 
 def build_role(category: str, element: str, attribute: Optional[str], answer_name: str) -> str:
-    if category in {"countries_byGDP", "organizations"}:
-        if not attribute:
-            raise ValueError(f"Missing attribute for category {category} element {element}")
+    # if category in {"countries_byGDP", "organizations"}:
+    #     if not attribute:
+    #         raise ValueError(f"Missing attribute for category {category} element {element}")
+    #     return f"{attribute} of {element}"
+    if category == "countries_byGDP":
+        return attribute
+    if category == "organizations":
         return f"{attribute} of {element}"
     if category == "companies_byRevenue":
         return f"Chief Executive Officer of {element}"
@@ -151,7 +155,7 @@ def build_event_facts(data: Dict[str, Any]) -> List[Dict[str, Any]]:
                 )
     facts.sort(
         key=lambda item: (
-            datetime.strptime(item["metadata"]["date"], "%Y-%m-%d"),
+            datetime.strptime(item["metadata"]["date"], "%Y-%m-%d") if "00" not in item["metadata"]["date"] else datetime.strptime(item["metadata"]["date"][:4]+"-01-01", "%Y-%m-%d"),
             EVENT_TYPE_PRIORITY[item["metadata"]["event_type"]],
         )
     )
