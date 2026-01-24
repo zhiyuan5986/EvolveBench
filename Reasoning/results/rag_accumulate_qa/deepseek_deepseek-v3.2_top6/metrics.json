@@ -1,0 +1,28 @@
+{
+  "model": "deepseek/deepseek-v3.2",
+  "total": 656,
+  "correct": 199,
+  "accuracy": 0.30335365853658536,
+  "by_question_type": {
+    "generic": {
+      "total": 164,
+      "correct": 57,
+      "accuracy": 0.3475609756097561
+    },
+    "rephrased_1": {
+      "total": 164,
+      "correct": 56,
+      "accuracy": 0.34146341463414637
+    },
+    "rephrased_2": {
+      "total": 164,
+      "correct": 50,
+      "accuracy": 0.3048780487804878
+    },
+    "rephrased_3": {
+      "total": 164,
+      "correct": 36,
+      "accuracy": 0.21951219512195122
+    }
+  }
+}
