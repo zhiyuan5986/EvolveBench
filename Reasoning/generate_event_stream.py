@@ -169,7 +169,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--input",
-        default="Reasoning/reasoning_qa_20250210.json",
+        default="./reasoning_qa_20250210.json",
         help="Path to a QA JSON that contains answer lists.",
     )
     parser.add_argument(

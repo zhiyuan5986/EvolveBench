@@ -30,7 +30,7 @@ def get_args() -> Namespace:
     parser.add_argument(
         "--event-stream",
         type=str,
-        default="event_stream.json",
+        default="Reasoning/event_stream.json",
         help="Path to event_stream.json.",
     )
     parser.add_argument(
