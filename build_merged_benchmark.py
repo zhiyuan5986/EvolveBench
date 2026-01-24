@@ -196,7 +196,6 @@ def load_on_this_day_events(path: Path) -> List[Dict[str, Any]]:
             events.append(
                 {
                     "id": str(uuid.uuid4()),
-                    "type": "event",
                     "timestamp": payload["date"],
                     "content": payload["event"],
                     "prev_event_ids": [],
@@ -213,29 +212,92 @@ def load_on_this_day_events(path: Path) -> List[Dict[str, Any]]:
 
 
 def build_reasoning_events(data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    facts = build_event_stream(data)
     entries: List[Dict[str, Any]] = []
-    for fact in facts:
-        entries.append(
-            {
-                "id": str(uuid.uuid4()),
-                "type": "event",
-                "timestamp": fact["metadata"]["date"],
-                "content": fact["text"],
-                "prev_event_ids": [],
-                "next_event_ids": [],
-                "metadata": {
-                    **fact["metadata"],
-                    "source": "reasoning_event_stream",
-                },
-            }
-        )
+    for item in iter_entries(data):
+        category = item["category"]
+        element = item["element"]
+        attribute = item["attribute"]
+        answers = item["entry"].get("answers", [])
+        parsed_answers = []
+        for answer in answers:
+            parsed = parse_answer_span(answer)
+            parsed_answers.append(
+                {
+                    "parsed": parsed,
+                    "start_date": normalize_date(parsed.start),
+                    "end_date": normalize_date(parsed.end) if parsed.end else None,
+                }
+            )
+        parsed_answers.sort(key=lambda item: sort_key_for_date(item["start_date"], "start"))
 
-    for index, entry in enumerate(entries):
-        if index > 0:
-            entry["prev_event_ids"].append(entries[index - 1]["id"])
-        if index < len(entries) - 1:
-            entry["next_event_ids"].append(entries[index + 1]["id"])
+        item_entries: List[Dict[str, Any]] = []
+        for parsed_item in parsed_answers:
+            parsed = parsed_item["parsed"]
+            start_date = parsed_item["start_date"]
+            end_date = parsed_item["end_date"]
+            role = build_role(category, element, attribute, parsed.name)
+            item_entries.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "timestamp": start_date,
+                    "content": build_fact_text(
+                        category,
+                        element,
+                        attribute,
+                        parsed.name,
+                        role,
+                        start_date,
+                        "start",
+                    ),
+                    "prev_event_ids": [],
+                    "next_event_ids": [],
+                    "metadata": {
+                        "category": category,
+                        "element": element,
+                        "attribute": attribute,
+                        "answer": parsed.name,
+                        "role": role,
+                        "date": start_date,
+                        "event_type": "start",
+                        "source": "reasoning_event_stream",
+                    },
+                }
+            )
+            if end_date:
+                item_entries.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "timestamp": end_date,
+                        "content": build_fact_text(
+                            category,
+                            element,
+                            attribute,
+                            parsed.name,
+                            role,
+                            end_date,
+                            "end",
+                        ),
+                        "prev_event_ids": [],
+                        "next_event_ids": [],
+                        "metadata": {
+                            "category": category,
+                            "element": element,
+                            "attribute": attribute,
+                            "answer": parsed.name,
+                            "role": role,
+                            "date": end_date,
+                            "event_type": "end",
+                            "source": "reasoning_event_stream",
+                        },
+                    }
+                )
+
+        for index, entry in enumerate(item_entries):
+            if index > 0:
+                entry["prev_event_ids"].append(item_entries[index - 1]["id"])
+            if index < len(item_entries) - 1:
+                entry["next_event_ids"].append(item_entries[index + 1]["id"])
+        entries.extend(item_entries)
 
     return entries
 
@@ -278,7 +340,6 @@ def build_qa_entries(data: Dict[str, Any]) -> List[Dict[str, Any]]:
                 qa_entries.append(
                     {
                         "id": str(uuid.uuid4()),
-                        "type": "qa",
                         "timestamp": reference_date,
                         "content": question,
                         "prev_event_ids": [],
@@ -296,6 +357,34 @@ def build_qa_entries(data: Dict[str, Any]) -> List[Dict[str, Any]]:
                     }
                 )
     return qa_entries
+
+
+def sort_event_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def sort_key(entry: Dict[str, Any]) -> tuple:
+        timestamp = entry.get("timestamp")
+        if not timestamp:
+            return (1, datetime.max, 0)
+        event_type = entry.get("metadata", {}).get("event_type", "start")
+        if "00" in timestamp:
+            base_date = datetime.strptime(f"{timestamp[:4]}-01-01", "%Y-%m-%d")
+        else:
+            base_date = datetime.strptime(timestamp, "%Y-%m-%d")
+        priority = EVENT_TYPE_PRIORITY.get(event_type, 0)
+        return (0, base_date, priority)
+
+    return sorted(entries, key=sort_key)
+
+
+def sort_qa_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def sort_key(entry: Dict[str, Any]) -> tuple:
+        timestamp = entry.get("timestamp")
+        if not timestamp:
+            return (1, datetime.max, "", 0)
+        base_date = datetime.strptime(timestamp, "%Y-%m-%d")
+        metadata = entry.get("metadata", {})
+        return (0, base_date, metadata.get("question_id", ""), metadata.get("sub_id", 0))
+
+    return sorted(entries, key=sort_key)
 
 
 def main() -> None:
@@ -331,7 +420,10 @@ def main() -> None:
     reasoning_event_entries = build_reasoning_events(reasoning_data)
     qa_entries = build_qa_entries(reasoning_data)
 
-    merged = on_this_day_entries + reasoning_event_entries + qa_entries
+    merged = {
+        "event": sort_event_entries(on_this_day_entries + reasoning_event_entries),
+        "qa": sort_qa_entries(qa_entries),
+    }
 
     with output_path.open("w", encoding="utf-8") as handle:
         json.dump(merged, handle, ensure_ascii=False, indent=2)
